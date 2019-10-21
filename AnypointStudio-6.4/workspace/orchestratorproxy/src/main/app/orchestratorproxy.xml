@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd">
+    <http:request-config name="HTTP_Request_Configuration" protocol="HTTPS" host="{orchestrator service name}" port="443" enableCookies="true" doc:name="HTTP Request Configuration">
+        <tls:context>
+            <tls:trust-store path="keystore/root.p12" password="{root.p12.password}" type="pkcs12"/>
+            <tls:key-store type="pkcs12" path="keystore/orchestrator.p12" keyPassword="{key.password}" password="{server.p12.password}"/>
+        </tls:context>
+    </http:request-config>
+    <http:listener-config name="HTTP_Listener_Configuration" host="{proxy server name}" port="8081" doc:name="HTTP Listener Configuration"/>
+    <flow name="orchestratorproxyFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="*" doc:name="HTTP">
+            <http:response-builder>
+                <http:headers expression="#[(flowVars.p3p != null) ? {'P3P' : flowVars.p3p } : {'HeaderName1' : 'HeaderValue1'}]"/>
+                <http:headers expression="#[(flowVars.setCookie != empty) ? {'Set-Cookie' : flowVars.setCookie } : {'HeaderName2' : 'HeaderValue2'}]"/>
+            </http:response-builder>
+        </http:listener>
+        <choice doc:name="Choice">
+            <when expression="#[groovy:message.getInboundProperty('Cookie')!=null]">
+                <copy-properties propertyName="Cookie" doc:name="Cookie"/>
+            </when>
+            <otherwise>
+                <logger message="&quot;No Cookie&quot;" level="DEBUG" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+        <choice doc:name="Choice">
+            <when expression="#[groovy:message.getInboundProperty('Content-Type')!=null]">
+                <copy-properties propertyName="Content-Type" doc:name="Content-Type"/>
+            </when>
+            <otherwise>
+                <logger message="&quot;No Content-Type&quot;" level="DEBUG" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+        <choice doc:name="Choice">
+            <when expression="#[groovy:message.getInboundProperty('X-UIPATH-Localization')!=null]">
+                <copy-properties propertyName="X-UIPATH-Localization" doc:name="X-UIPATH-Localization"/>
+            </when>
+            <otherwise>
+                <logger message="&quot;No X-UIPATH-Localization&quot;" level="DEBUG" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+        <choice doc:name="Choice">
+            <when expression="#[groovy:message.getInboundProperty('Authorization')!=null]">
+                <copy-properties propertyName="Authorization" doc:name="Authorization"/>
+            </when>
+            <otherwise>
+                <logger message="No Automation&quot;" level="DEBUG" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+        <choice doc:name="Choice">
+            <when expression="#[groovy:message.getInboundProperty('X-UIPATH-OrganizationUnitId')!=null]">
+                <copy-properties propertyName="X-UIPATH-OrganizationUnitId" doc:name="X-UIPATH-OrganizationUnitId"/>
+            </when>
+            <otherwise>
+                <logger message="&quot;No X-UIPATH-OrganizationUnitId&quot;" level="DEBUG" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+        <choice doc:name="Choice">
+            <when expression="#[groovy:message.getInboundProperty('X-XSRF-TOKEN')!=null]">
+                <copy-properties propertyName="X-XSRF-TOKEN" doc:name="X-XSRF-TOKEN"/>
+            </when>
+            <otherwise>
+                <logger message="&quot;No X-XSRF-TOKEN&quot;" level="DEBUG" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+        <response>
+            <logger message="#[flowVars.logMessage], STATUS=#[groovy:message.getInboundProperty('http.status')]" level="INFO" doc:name="Logger"/>
+            <choice doc:name="Choice">
+                <when expression="#[groovy:message.getInboundProperty('Strict-Transport-Security')!=null]">
+                    <copy-properties propertyName="Strict-Transport-Security" doc:name="Strict-Transport-Security"/>
+                </when>
+                <otherwise>
+                    <logger message="&quot;No Strict-Transport-Security&quot;" level="DEBUG" doc:name="Logger"/>
+                </otherwise>
+            </choice>
+            <choice doc:name="Choice">
+                <when expression="#[groovy:message.getInboundProperty('Cache-Control')!=null]">
+                    <copy-properties propertyName="Cache-Control" doc:name="Cache-Control"/>
+                </when>
+                <otherwise>
+                    <logger message="&quot;No Cache-Control&quot;" level="DEBUG" doc:name="Logger"/>
+                </otherwise>
+            </choice>
+            <set-variable variableName="setCookie" value="#[[]]" doc:name="Init setCookie Variable"/>
+            <choice doc:name="Choice">
+                <when expression="#[groovy:message.getInboundProperty('set-cookie') != null]">
+                    <choice doc:name="Choice">
+                        <when expression="#[groovy:message.getInboundProperty('set-cookie').class.equals(String.class)]">
+                            <expression-component doc:name="Expression"><![CDATA[flowVars.setCookie.add(message.inboundProperties['set-cookie'])]]></expression-component>
+                        </when>
+                        <otherwise>
+                            <foreach collection="#[groovy:message.getInboundProperty('set-cookie')]" doc:name="For Each set-cookie">
+                                <expression-component doc:name="Set setCookie Variable"><![CDATA[flowVars.setCookie.add(payload.replace('secure;', '').replace('{orchestrator domain name}', '{proxy domain name or localhost}'))]]></expression-component>
+                            </foreach>
+                        </otherwise>
+                    </choice>
+                </when>
+                <otherwise>
+                    <logger message="&quot;No set-cookie&quot;" level="DEBUG" doc:name="Logger"/>
+                </otherwise>
+            </choice>
+            <set-variable variableName="P3P" value="#[message.inboundProperties['P3P']]" doc:name="P3P Variable"/>
+        </response>
+        <copy-properties propertyName="Origin" doc:name="Origin"/>
+        <copy-properties propertyName="Sec-Fetch-Mode" doc:name="Sec-Fetch-Mode"/>
+        <copy-properties propertyName="Sec-Fetch-Site" doc:name="Sec-Fetch-Site"/>
+        <copy-properties propertyName="Sec-Fetch-User" doc:name="Sec-Fetch-User"/>
+        <copy-properties propertyName="Upgrade-Insecure-Requests" doc:name="Upgrade-Insecure-Requests"/>
+        <set-property propertyName="Host" value="&quot;orchestrator.nbdlab.local&quot;" doc:name="Host"/>
+        <set-variable variableName="logMessage" value="PATH=#[groovy:message.getInboundProperty('http.request.path').substring(1)], METHOD=#[groovy:message.getInboundProperty('http.method')]" doc:name="Set LogMessage"/>
+        <http:request config-ref="HTTP_Request_Configuration" path="#[groovy:message.getInboundProperty('http.request.path').substring(1)]" method="#[groovy:message.getInboundProperty('http.method')]" doc:name="HTTPS Orchestrator">
+            <http:request-builder>
+                <http:query-params expression="#[(message.inboundProperties['http.query.params']!=null) ? (message.inboundProperties['http.query.params']) : ([])]"/>
+            </http:request-builder>
+        </http:request>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="#[flowVars.logMessage], STATUS=#[groovy:message.getInboundProperty('http.status')]" level="INFO" doc:name="Logger"/>
+            <!--<logger message="#[String str = message.payloadAs(java.lang.String); java.io.InputStream ins = new java.io.ByteArrayInputStream(str.getBytes()); message.payload = ins; return str;]" level="INFO" doc:name="Copy_of_Logger"/>-->
+            <set-property propertyName="http.status" value="#[groovy:message.getInboundProperty('http.status')]" doc:name="status" />
+            <set-payload value="#[String str = message.payloadAs(java.lang.String); java.io.InputStream ins = new java.io.ByteArrayInputStream(str.getBytes()); message.payload = ins; return str;]" doc:name="payload" />
+            <copy-properties propertyName="Content-Type" doc:name="Content-Type"/>
+        </catch-exception-strategy>
+    </flow>
+</mule>
